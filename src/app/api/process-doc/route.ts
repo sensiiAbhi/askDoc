@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PDFParse } from 'pdf-parse';
+import { getDocumentProxy, extractText } from 'unpdf';
 import mammoth from 'mammoth';
 
 export async function POST(req: NextRequest) {
@@ -19,9 +19,9 @@ export async function POST(req: NextRequest) {
     let extractedText = '';
 
     if (fileType === 'application/pdf' || fileName.endsWith('.pdf')) {
-      const parser = new PDFParse({ data: buffer });
-      const parsedData = await parser.getText();
-      extractedText = parsedData.text;
+      const pdf = await getDocumentProxy(new Uint8Array(buffer));
+      const result = await extractText(pdf, { mergePages: true });
+      extractedText = result.text;
     } else if (
       fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
       fileName.endsWith('.docx')

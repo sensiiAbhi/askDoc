@@ -38,6 +38,10 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [chatError, setChatError] = useState<string | null>(null);
 
+  // Map generation state
+  const [isGeneratingMap, setIsGeneratingMap] = useState<boolean>(false);
+  const [mapError, setMapError] = useState<string | null>(null);
+
   // Responsive state
   const [activeTab, setActiveTab] = useState<'document' | 'chat'>('document');
   const [mainActiveTab, setMainActiveTab] = useState<'chat' | 'mindmap'>('chat');
@@ -50,10 +54,9 @@ export default function Home() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isGenerating]);
 
-  // When document parses successfully, auto-switch to mindmap view for best UX
+  // When document parses successfully, auto-switch to chat view for best UX
   useEffect(() => {
     if (extractedText) {
-      setMainActiveTab('mindmap');
       if (activeTab === 'document') {
         const timer = setTimeout(() => {
           setActiveTab('chat');
@@ -105,7 +108,7 @@ export default function Home() {
 
       setExtractedText(data.text);
       setWordCount(data.wordCount);
-      setMindMap(data.mindMap);
+      setMindMap(null);
       
       // Set initial assistant message
       setMessages([
@@ -166,12 +169,51 @@ I have analyzed the document. You can now ask me any questions based on it. Use 
     setWordCount(null);
     setExtractedText(null);
     setMindMap(null);
+    setIsGeneratingMap(false);
+    setMapError(null);
     setDocError(null);
     setMessages([]);
     setChatError(null);
     setActiveTab('document');
     setMainActiveTab('chat');
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleGenerateMap = async () => {
+    if (!extractedText || isGeneratingMap) return;
+
+    setIsGeneratingMap(true);
+    setMapError(null);
+
+    try {
+      const response = await fetch('/api/generate-map', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: extractedText,
+          fileName: fileName || 'Document',
+        }),
+      });
+
+      if (!response.ok) {
+        let errorMsg = 'Failed to generate concept map';
+        try {
+          const data = await response.json();
+          errorMsg = data.error || errorMsg;
+        } catch (_) {}
+        throw new Error(errorMsg);
+      }
+
+      const data = await response.json();
+      setMindMap(data.mindMap);
+    } catch (err: any) {
+      console.error(err);
+      setMapError(err.message || 'Failed to generate map. Quota exceeded. Please try again.');
+    } finally {
+      setIsGeneratingMap(false);
+    }
   };
 
   // Chat actions
@@ -599,7 +641,7 @@ I have analyzed the document. You can now ask me any questions based on it. Use 
             <div className="main-mindmap-container">
               {mindMap ? (
                 <MindMap data={mindMap} onAskQuestion={handleSendMessage} />
-              ) : (
+              ) : isGeneratingMap ? (
                 <div style={{ display: 'flex', flex: 1, height: '100%', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '0.75rem', padding: '3rem 1rem' }}>
                   <div className="loading-dots">
                     <div className="loading-dot"></div>
@@ -607,6 +649,27 @@ I have analyzed the document. You can now ask me any questions based on it. Use 
                     <div className="loading-dot"></div>
                   </div>
                   <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Generating interactive concept map...</p>
+                </div>
+              ) : (
+                <div className="map-generator-cta">
+                  <div className="map-generator-icon">
+                    <Sparkles size={40} />
+                  </div>
+                  <h3 className="map-generator-title">Generate Visual Concept Map</h3>
+                  <p className="map-generator-desc">
+                    Extract the core topics and subtopics of this document to render an interactive Concept Tree and Radial Mind Map.
+                  </p>
+                  
+                  {mapError && (
+                    <div className="status-banner error" style={{ margin: '0.5rem 0', maxWidth: '380px', fontSize: '0.8rem' }}>
+                      <AlertCircle size={16} />
+                      <span>{mapError}</span>
+                    </div>
+                  )}
+
+                  <button className="btn-primary" onClick={handleGenerateMap} style={{ width: 'auto', padding: '0.75rem 2rem', marginTop: '0.5rem' }}>
+                    <Sparkles size={16} /> Generate Visual Map
+                  </button>
                 </div>
               )}
             </div>

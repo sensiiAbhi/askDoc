@@ -81,11 +81,21 @@ export default function Home() {
         body: formData,
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to parse the file');
+        let errorMsg = 'Failed to parse the file';
+        try {
+          const data = await response.json();
+          errorMsg = data.error || errorMsg;
+        } catch (_) {
+          try {
+            const textMsg = await response.text();
+            errorMsg = textMsg || errorMsg;
+          } catch (_) {}
+        }
+        throw new Error(errorMsg);
       }
+
+      const data = await response.json();
 
       setExtractedText(data.text);
       setWordCount(data.wordCount);
@@ -191,11 +201,21 @@ I have analyzed the document. You can now ask me any questions based on it. Use 
         }),
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to communicate with assistant');
+        let errorMsg = 'Failed to communicate with assistant';
+        try {
+          const data = await response.json();
+          errorMsg = data.error || errorMsg;
+        } catch (_) {
+          try {
+            const textMsg = await response.text();
+            errorMsg = textMsg || errorMsg;
+          } catch (_) {}
+        }
+        throw new Error(errorMsg);
       }
+
+      const data = await response.json();
 
       setMessages((prev) => [
         ...prev,

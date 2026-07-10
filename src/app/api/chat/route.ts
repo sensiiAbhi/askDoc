@@ -58,23 +58,57 @@ Question: ${question}`;
       parts: [{ text: contextPrompt }],
     });
 
-    // Request answer from Gemini
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: contents,
-      config: {
-        systemInstruction: systemInstruction,
-        temperature: 0.2, // Lower temperature for more factual, document-aligned answers
+    // Request answer from Gemini with fallback support
+    let response;
+    try {
+      response = await ai.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: contents,
+        config: {
+          systemInstruction: systemInstruction,
+          temperature: 0.2, // Lower temperature for more factual, document-aligned answers
+        }
+      });
+    } catch (err: any) {
+      console.warn('gemini-2.0-flash failed or quota exceeded, attempting fallback to gemini-1.5-flash...', err);
+      try {
+        response = await ai.models.generateContent({
+          model: 'gemini-1.5-flash',
+          contents: contents,
+          config: {
+            systemInstruction: systemInstruction,
+            temperature: 0.2,
+          }
+        });
+      } catch (fallbackErr) {
+        // If fallback also fails, throw the original error or the fallback error
+        throw err;
       }
-    });
+    }
 
     const answer = response.text || "I couldn't generate an answer. Please try again.";
 
     return NextResponse.json({ text: answer });
   } catch (error: any) {
     console.error('Error during chat completion:', error);
+    
+    // Extract a clean human-readable message from Google GenAI API error
+    let errorMessage = 'Failed to generate answer from Gemini';
+    if (error?.message) {
+      try {
+        const parsed = JSON.parse(error.message);
+        if (parsed?.error?.message) {
+          errorMessage = parsed.error.message;
+        } else {
+          errorMessage = error.message;
+        }
+      } catch (_) {
+        errorMessage = error.message;
+      }
+    }
+
     return NextResponse.json(
-      { error: error?.message || 'Failed to generate answer from Gemini' },
+      { error: errorMessage },
       { status: 500 }
     );
   }

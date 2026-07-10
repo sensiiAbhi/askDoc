@@ -58,32 +58,37 @@ Question: ${question}`;
       parts: [{ text: contextPrompt }],
     });
 
-    // Request answer from Gemini with fallback support
+    // Request answer from Gemini with sequential fallback support
+    const modelsToTry = [
+      'gemini-2.0-flash',
+      'gemini-2.5-flash',
+      'gemini-flash-latest'
+    ];
+
     let response;
-    try {
-      response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
-        contents: contents,
-        config: {
-          systemInstruction: systemInstruction,
-          temperature: 0.2, // Lower temperature for more factual, document-aligned answers
-        }
-      });
-    } catch (err: any) {
-      console.warn('gemini-2.0-flash failed or quota exceeded, attempting fallback to gemini-1.5-flash...', err);
+    let lastError = null;
+
+    for (const model of modelsToTry) {
       try {
+        console.log(`Attempting generation with model: ${model}`);
         response = await ai.models.generateContent({
-          model: 'gemini-1.5-flash',
+          model: model,
           contents: contents,
           config: {
             systemInstruction: systemInstruction,
-            temperature: 0.2,
+            temperature: 0.2, // Lower temperature for more factual, document-aligned answers
           }
         });
-      } catch (fallbackErr) {
-        // If fallback also fails, throw the original error or the fallback error
-        throw err;
+        console.log(`Successfully generated answer using model: ${model}`);
+        break;
+      } catch (err: any) {
+        console.warn(`Model ${model} failed:`, err.message || err);
+        lastError = err;
       }
+    }
+
+    if (!response) {
+      throw lastError || new Error('All Gemini generation models failed');
     }
 
     const answer = response.text || "I couldn't generate an answer. Please try again.";

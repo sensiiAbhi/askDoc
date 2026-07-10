@@ -38,9 +38,9 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [chatError, setChatError] = useState<string | null>(null);
 
-  // Responsive state (tab switcher)
-  const [activeTab, setActiveTab] = useState<'document' | 'mindmap' | 'chat'>('document');
-  const [leftActiveTab, setLeftActiveTab] = useState<'upload' | 'mindmap'>('upload');
+  // Responsive state
+  const [activeTab, setActiveTab] = useState<'document' | 'chat'>('document');
+  const [mainActiveTab, setMainActiveTab] = useState<'chat' | 'mindmap'>('chat');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -53,10 +53,10 @@ export default function Home() {
   // When document parses successfully, auto-switch to mindmap view for best UX
   useEffect(() => {
     if (extractedText) {
-      setLeftActiveTab('mindmap');
+      setMainActiveTab('mindmap');
       if (activeTab === 'document') {
         const timer = setTimeout(() => {
-          setActiveTab('mindmap');
+          setActiveTab('chat');
         }, 600);
         return () => clearTimeout(timer);
       }
@@ -170,7 +170,7 @@ I have analyzed the document. You can now ask me any questions based on it. Use 
     setMessages([]);
     setChatError(null);
     setActiveTab('document');
-    setLeftActiveTab('upload');
+    setMainActiveTab('chat');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -181,6 +181,7 @@ I have analyzed the document. You can now ask me any questions based on it. Use 
 
     if (!forcedQuery) setInputValue('');
     setChatError(null);
+    setMainActiveTab('chat');
 
     const userMessage: Message = {
       id: Math.random().toString(36).substring(2, 9),
@@ -331,24 +332,24 @@ I have analyzed the document. You can now ask me any questions based on it. Use 
         <button 
           id="tab-btn-doc"
           className={`mobile-tab-btn ${activeTab === 'document' ? 'active' : ''}`}
-          onClick={() => { setActiveTab('document'); setLeftActiveTab('upload'); }}
+          onClick={() => setActiveTab('document')}
         >
           <FileText size={15} /> Doc
         </button>
         {extractedText && (
           <button 
             id="tab-btn-map"
-            className={`mobile-tab-btn ${activeTab === 'mindmap' ? 'active' : ''}`}
-            onClick={() => { setActiveTab('mindmap'); setLeftActiveTab('mindmap'); }}
+            className={`mobile-tab-btn ${activeTab === 'chat' && mainActiveTab === 'mindmap' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('chat'); setMainActiveTab('mindmap'); }}
           >
             <Sparkles size={15} /> Map
           </button>
         )}
         <button 
           id="tab-btn-chat"
-          className={`mobile-tab-btn ${activeTab === 'chat' ? 'active' : ''}`}
+          className={`mobile-tab-btn ${activeTab === 'chat' && mainActiveTab === 'chat' ? 'active' : ''}`}
           disabled={!extractedText}
-          onClick={() => setActiveTab('chat')}
+          onClick={() => { setActiveTab('chat'); setMainActiveTab('chat'); }}
           style={{ opacity: !extractedText ? 0.5 : 1 }}
         >
           <MessageSquare size={15} /> Chat {!extractedText && '(Locked)'}
@@ -361,148 +362,245 @@ I have analyzed the document. You can now ask me any questions based on it. Use 
         {/* Left Side: Document Panel */}
         <section 
           id="doc-panel-section"
-          className={`left-panel ${activeTab === 'document' || activeTab === 'mindmap' ? 'active' : ''}`}
+          className={`left-panel ${activeTab === 'document' ? 'active' : ''}`}
+        >
+          <div className="card">
+            <h2 className="card-title">
+              <Upload size={18} className="doc-meta-icon" /> Upload Document
+            </h2>
+            
+            {/* Drag and Drop Zone */}
+            {!fileName && (
+              <div 
+                id="drop-zone-area"
+                className={`upload-zone ${dragActive ? 'drag-active' : ''}`}
+                onDragEnter={handleDrag}
+                onDragOver={handleDrag}
+                onDragLeave={handleDrag}
+                onDrop={handleDrop}
+                onClick={triggerUploadClick}
+              >
+                <input 
+                  id="file-selector-input"
+                  type="file" 
+                  className="hidden-file-input" 
+                  ref={fileInputRef} 
+                  onChange={handleFileChange}
+                  accept=".pdf,.docx,.txt,.md"
+                />
+                <div className="upload-icon">
+                  <Upload size={24} />
+                </div>
+                <p className="upload-text">Drag & drop your file here</p>
+                <p className="upload-hint">or click to browse from device</p>
+                <p className="upload-hint" style={{ fontSize: '0.75rem', marginTop: '4px' }}>
+                  Supports PDF, Word (.docx), TXT, or MD
+                </p>
+              </div>
+            )}
+
+            {/* Document processing state */}
+            {isProcessing && (
+              <div className="status-banner processing" id="status-processing-banner">
+                <div className="loading-dots">
+                  <div className="loading-dot"></div>
+                  <div className="loading-dot"></div>
+                  <div className="loading-dot"></div>
+                </div>
+                Processing document...
+              </div>
+            )}
+
+            {/* Document error state */}
+            {docError && (
+              <div className="status-banner error" id="status-error-banner">
+                <AlertCircle size={16} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{docError}</span>
+              </div>
+            )}
+
+            {/* Document details when uploaded successfully */}
+            {extractedText && fileName && (
+              <div className="doc-info" id="uploaded-doc-details">
+                <div className="doc-meta">
+                  <FileText className="doc-meta-icon" size={24} />
+                  <div style={{ overflow: 'hidden' }}>
+                    <div className="doc-name" title={fileName}>{fileName}</div>
+                    <div className="doc-size">{fileSize}</div>
+                  </div>
+                  <button 
+                    id="btn-remove-document"
+                    onClick={removeDocument} 
+                    className="btn-remove-doc" 
+                    title="Remove Document"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+                
+                <div className="status-banner success">
+                  <CheckCircle2 size={16} /> Document processed successfully!
+                </div>
+
+                <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                    <span>Estimated Words:</span>
+                    <span style={{ fontWeight: 600 }}>{wordCount?.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Guidelines / Quick Prompts Card */}
+          {extractedText && (
+            <div className="card" id="quick-prompts-card" style={{ animation: 'fadeIn 0.4s ease-out' }}>
+              <h2 className="card-title">
+                <Sparkles size={18} className="doc-meta-icon" /> Suggested Prompts
+              </h2>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                Click a prompt below to quickly ask the assistant about the uploaded document:
+              </p>
+              <div className="suggestions-grid">
+                {suggestedPrompts.map((prompt, idx) => (
+                  <button 
+                    key={idx}
+                    className="suggestion-btn"
+                    onClick={() => handleSendMessage(prompt)}
+                    disabled={isGenerating}
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* Right Side: Chat Panel */}
+        <section 
+          id="chat-panel-section"
+          className={`right-panel ${activeTab === 'chat' ? 'active' : ''}`}
         >
           {extractedText && (
-            <div className="left-panel-tabs">
+            <div className="main-panel-tabs">
               <button
-                className={`left-tab-btn ${leftActiveTab === 'upload' ? 'active' : ''}`}
-                onClick={() => setLeftActiveTab('upload')}
+                className={`main-tab-btn ${mainActiveTab === 'chat' ? 'active' : ''}`}
+                onClick={() => setMainActiveTab('chat')}
               >
-                Document Info
+                <MessageSquare size={14} style={{ marginRight: '4px' }} /> Chat Assistant
               </button>
               <button
-                className={`left-tab-btn ${leftActiveTab === 'mindmap' ? 'active' : ''}`}
-                onClick={() => setLeftActiveTab('mindmap')}
+                className={`main-tab-btn ${mainActiveTab === 'mindmap' ? 'active' : ''}`}
+                onClick={() => setMainActiveTab('mindmap')}
               >
-                Concept Map
+                <Sparkles size={14} style={{ marginRight: '4px' }} /> Visual Map
               </button>
             </div>
           )}
 
-          {leftActiveTab === 'upload' ? (
-            <>
-              <div className="card">
-                <h2 className="card-title">
-                  <Upload size={18} className="doc-meta-icon" /> Upload Document
-                </h2>
-                
-                {/* Drag and Drop Zone */}
-                {!fileName && (
-                  <div 
-                    id="drop-zone-area"
-                    className={`upload-zone ${dragActive ? 'drag-active' : ''}`}
-                    onDragEnter={handleDrag}
-                    onDragOver={handleDrag}
-                    onDragLeave={handleDrag}
-                    onDrop={handleDrop}
-                    onClick={triggerUploadClick}
-                  >
-                    <input 
-                      id="file-selector-input"
-                      type="file" 
-                      className="hidden-file-input" 
-                      ref={fileInputRef} 
-                      onChange={handleFileChange}
-                      accept=".pdf,.docx,.txt,.md"
-                    />
-                    <div className="upload-icon">
-                      <Upload size={24} />
+          {mainActiveTab === 'chat' ? (
+            <div className="chat-container">
+              
+              {/* Chat History Panel */}
+              <div className="chat-history">
+                {messages.length === 0 ? (
+                  <div className="chat-welcome" id="empty-chat-welcome">
+                    <div className="chat-welcome-icon">
+                      <MessageSquare size={36} />
                     </div>
-                    <p className="upload-text">Drag & drop your file here</p>
-                    <p className="upload-hint">or click to browse from device</p>
-                    <p className="upload-hint" style={{ fontSize: '0.75rem', marginTop: '4px' }}>
-                      Supports PDF, Word (.docx), TXT, or MD
+                    <h3 className="chat-welcome-title">Ask Your Document</h3>
+                    <p className="chat-welcome-desc">
+                      {extractedText 
+                        ? "The document is ready! Ask questions, request summaries, or check specific figures."
+                        : "Please upload a PDF, Word document, or TXT file on the left side to start asking questions."
+                      }
                     </p>
                   </div>
+                ) : (
+                  messages.map((msg) => (
+                    <div 
+                      key={msg.id} 
+                      className={`message-bubble ${msg.role}`}
+                    >
+                      <div className="message-avatar">
+                        {msg.role === 'user' ? 'U' : 'AI'}
+                      </div>
+                      <div className="message-content-wrapper">
+                        <span className="message-sender">
+                          {msg.role === 'user' ? 'You' : 'Assistant'}
+                        </span>
+                        <div className="message-text">
+                          {formatMessageText(msg.text)}
+                        </div>
+                      </div>
+                    </div>
+                  ))
                 )}
 
-                {/* Document processing state */}
-                {isProcessing && (
-                  <div className="status-banner processing" id="status-processing-banner">
-                    <div className="loading-dots">
-                      <div className="loading-dot"></div>
-                      <div className="loading-dot"></div>
-                      <div className="loading-dot"></div>
+                {/* Loader during API calls */}
+                {isGenerating && (
+                  <div className="message-bubble assistant" id="chat-generating-bubble">
+                    <div className="message-avatar">AI</div>
+                    <div className="message-content-wrapper">
+                      <span className="message-sender">Assistant</span>
+                      <div className="message-text" style={{ padding: '0.5rem 1rem' }}>
+                        <div className="loading-dots">
+                          <div className="loading-dot"></div>
+                          <div className="loading-dot"></div>
+                          <div className="loading-dot"></div>
+                        </div>
+                      </div>
                     </div>
-                    Processing document...
                   </div>
                 )}
 
-                {/* Document error state */}
-                {docError && (
-                  <div className="status-banner error" id="status-error-banner">
+                {/* Chat-level error indicators */}
+                {chatError && (
+                  <div className="status-banner error" id="chat-error-indicator" style={{ alignSelf: 'center', maxWidth: '80%' }}>
                     <AlertCircle size={16} />
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{docError}</span>
+                    <span>{chatError}</span>
                   </div>
                 )}
 
-                {/* Document details when uploaded successfully */}
-                {extractedText && fileName && (
-                  <div className="doc-info" id="uploaded-doc-details">
-                    <div className="doc-meta">
-                      <FileText className="doc-meta-icon" size={24} />
-                      <div style={{ overflow: 'hidden' }}>
-                        <div className="doc-name" title={fileName}>{fileName}</div>
-                        <div className="doc-size">{fileSize}</div>
-                      </div>
-                      <button 
-                        id="btn-remove-document"
-                        onClick={removeDocument} 
-                        className="btn-remove-doc" 
-                        title="Remove Document"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                    
-                    <div className="status-banner success">
-                      <CheckCircle2 size={16} /> Document processed successfully!
-                    </div>
-
-                    <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                        <span>Estimated Words:</span>
-                        <span style={{ fontWeight: 600 }}>{wordCount?.toLocaleString()}</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                <div ref={chatEndRef} />
               </div>
 
-              {/* Guidelines / Quick Prompts Card */}
-              {extractedText && (
-                <div className="card" id="quick-prompts-card" style={{ animation: 'fadeIn 0.4s ease-out' }}>
-                  <h2 className="card-title">
-                    <Sparkles size={18} className="doc-meta-icon" /> Suggested Prompts
-                  </h2>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-                    Click a prompt below to quickly ask the assistant about the uploaded document:
-                  </p>
-                  <div className="suggestions-grid">
-                    {suggestedPrompts.map((prompt, idx) => (
-                      <button 
-                        key={idx}
-                        className="suggestion-btn"
-                        onClick={() => handleSendMessage(prompt)}
-                        disabled={isGenerating}
-                      >
-                        {prompt}
-                      </button>
-                    ))}
-                  </div>
+              {/* Chat Input Textbox */}
+              <div className="chat-input-area">
+                <div className="chat-input-wrapper">
+                  <textarea
+                    id="chat-message-textbox"
+                    className="chat-input"
+                    placeholder={extractedText 
+                      ? "Ask a question about the document..." 
+                      : "Upload a document first to start chatting..."
+                    }
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    disabled={!extractedText || isGenerating}
+                    rows={1}
+                  />
+                  <button
+                    id="btn-send-message"
+                    className="chat-send-btn"
+                    onClick={() => handleSendMessage()}
+                    disabled={!extractedText || !inputValue.trim() || isGenerating}
+                    title="Send Message"
+                  >
+                    <Send size={16} />
+                  </button>
                 </div>
-              )}
-            </>
+              </div>
+              
+            </div>
           ) : (
-            <div className="card" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: '400px', padding: '1.25rem', overflow: 'hidden' }}>
-              <h2 className="card-title" style={{ marginBottom: '0.25rem' }}>
-                <Sparkles size={18} className="doc-meta-icon" /> Concept Map
-              </h2>
+            <div className="main-mindmap-container">
               {mindMap ? (
                 <MindMap data={mindMap} onAskQuestion={handleSendMessage} />
               ) : (
-                <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '0.75rem', padding: '3rem 1rem' }}>
+                <div style={{ display: 'flex', flex: 1, height: '100%', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '0.75rem', padding: '3rem 1rem' }}>
                   <div className="loading-dots">
                     <div className="loading-dot"></div>
                     <div className="loading-dot"></div>
@@ -513,108 +611,6 @@ I have analyzed the document. You can now ask me any questions based on it. Use 
               )}
             </div>
           )}
-        </section>
-
-        {/* Right Side: Chat Panel */}
-        <section 
-          id="chat-panel-section"
-          className={`right-panel ${activeTab === 'chat' ? 'active' : ''}`}
-        >
-          <div className="chat-container">
-            
-            {/* Chat History Panel */}
-            <div className="chat-history">
-              {messages.length === 0 ? (
-                <div className="chat-welcome" id="empty-chat-welcome">
-                  <div className="chat-welcome-icon">
-                    <MessageSquare size={36} />
-                  </div>
-                  <h3 className="chat-welcome-title">Ask Your Document</h3>
-                  <p className="chat-welcome-desc">
-                    {extractedText 
-                      ? "The document is ready! Ask questions, request summaries, or check specific figures."
-                      : "Please upload a PDF, Word document, or TXT file on the left side to start asking questions."
-                    }
-                  </p>
-                </div>
-              ) : (
-                messages.map((msg) => (
-                  <div 
-                    key={msg.id} 
-                    className={`message-bubble ${msg.role}`}
-                  >
-                    <div className="message-avatar">
-                      {msg.role === 'user' ? 'U' : 'AI'}
-                    </div>
-                    <div className="message-content-wrapper">
-                      <span className="message-sender">
-                        {msg.role === 'user' ? 'You' : 'Assistant'}
-                      </span>
-                      <div className="message-text">
-                        {formatMessageText(msg.text)}
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-
-              {/* Loader during API calls */}
-              {isGenerating && (
-                <div className="message-bubble assistant" id="chat-generating-bubble">
-                  <div className="message-avatar">AI</div>
-                  <div className="message-content-wrapper">
-                    <span className="message-sender">Assistant</span>
-                    <div className="message-text" style={{ padding: '0.5rem 1rem' }}>
-                      <div className="loading-dots">
-                        <div className="loading-dot"></div>
-                        <div className="loading-dot"></div>
-                        <div className="loading-dot"></div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Chat-level error indicators */}
-              {chatError && (
-                <div className="status-banner error" id="chat-error-indicator" style={{ alignSelf: 'center', maxWidth: '80%' }}>
-                  <AlertCircle size={16} />
-                  <span>{chatError}</span>
-                </div>
-              )}
-
-              <div ref={chatEndRef} />
-            </div>
-
-            {/* Chat Input Textbox */}
-            <div className="chat-input-area">
-              <div className="chat-input-wrapper">
-                <textarea
-                  id="chat-message-textbox"
-                  className="chat-input"
-                  placeholder={extractedText 
-                    ? "Ask a question about the document..." 
-                    : "Upload a document first to start chatting..."
-                  }
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  disabled={!extractedText || isGenerating}
-                  rows={1}
-                />
-                <button
-                  id="btn-send-message"
-                  className="chat-send-btn"
-                  onClick={() => handleSendMessage()}
-                  disabled={!extractedText || !inputValue.trim() || isGenerating}
-                  title="Send Message"
-                >
-                  <Send size={16} />
-                </button>
-              </div>
-            </div>
-            
-          </div>
         </section>
 
       </main>

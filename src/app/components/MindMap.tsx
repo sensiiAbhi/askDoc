@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, Network, GitBranch } from 'lucide-react';
 
 interface MindMapNode {
   topic: string;
@@ -22,15 +22,17 @@ interface FlattenedNode {
   parentId?: string;
   x: number;
   y: number;
+  side?: 'left' | 'right';
 }
 
 export default function MindMap({ data, onAskQuestion }: MindMapProps) {
+  const [layout, setLayout] = useState<'tree' | 'radial'>('tree');
   const [selectedNode, setSelectedNode] = useState<FlattenedNode | null>(null);
 
-  const svgWidth = 600;
-  const svgHeight = 420;
+  const svgWidth = 800;
+  const svgHeight = 440;
 
-  // Flatten hierarchy and compute Left-to-Right layout coordinates
+  // Flatten hierarchy and compute coordinates dynamically based on layout
   const { nodes, connections } = useMemo(() => {
     if (!data) return { nodes: [], connections: [] };
 
@@ -40,100 +42,252 @@ export default function MindMap({ data, onAskQuestion }: MindMapProps) {
     const rootId = 'root';
     const subtopics = data.children || [];
 
-    // Count leaf nodes bottom-up to allocate vertical lanes
-    const getLeafCount = (node: MindMapNode): number => {
-      if (!node.children || node.children.length === 0) return 1;
-      return node.children.reduce((acc, child) => acc + getLeafCount(child), 0);
-    };
+    if (layout === 'tree') {
+      // --- HIERARCHICAL CONCEPT TREE LAYOUT (Left-to-Right) ---
+      const getLeafCount = (node: MindMapNode): number => {
+        if (!node.children || node.children.length === 0) return 1;
+        return node.children.reduce((acc, child) => acc + getLeafCount(child), 0);
+      };
 
-    const totalLeaves = subtopics.reduce((acc, sub) => acc + getLeafCount(sub), 0) || 1;
-    
-    // Distribute y coordinates based on leaves lanes
-    const verticalPadding = 35;
-    const availableHeight = svgHeight - verticalPadding * 2;
-    const stepY = availableHeight / (totalLeaves > 1 ? totalLeaves - 1 : 1);
+      const totalLeaves = subtopics.reduce((acc, sub) => acc + getLeafCount(sub), 0) || 1;
+      const verticalPadding = 35;
+      const availableHeight = svgHeight - verticalPadding * 2;
+      const stepY = availableHeight / (totalLeaves > 1 ? totalLeaves - 1 : 1);
 
-    let leafIndex = 0;
+      let leafIndex = 0;
+      const level1Nodes: Array<{ id: string; node: MindMapNode }> = [];
 
-    const level1Nodes: Array<{ id: string; node: MindMapNode }> = [];
+      // 1. Process Level 2 details (leaves) and space them vertically
+      subtopics.forEach((sub, subIdx) => {
+        const subId = `sub-${subIdx}`;
+        level1Nodes.push({ id: subId, node: sub });
 
-    // 1. Process Level 2 details (leaves) and space them vertically
-    subtopics.forEach((sub, subIdx) => {
-      const subId = `sub-${subIdx}`;
-      level1Nodes.push({ id: subId, node: sub });
-
-      const details = sub.children || [];
-      if (details.length === 0) {
-        // Subtopic itself is a leaf
-        const nodeY = verticalPadding + leafIndex * stepY;
-        flattened.push({
-          id: subId,
-          topic: sub.topic,
-          description: sub.description,
-          level: 1,
-          parentId: rootId,
-          x: 270,
-          y: nodeY
-        });
-        links.push({ from: rootId, to: subId });
-        leafIndex++;
-      } else {
-        details.forEach((det, detIdx) => {
-          const detId = `det-${subIdx}-${detIdx}`;
+        const details = sub.children || [];
+        if (details.length === 0) {
           const nodeY = verticalPadding + leafIndex * stepY;
           flattened.push({
-            id: detId,
-            topic: det.topic,
-            description: det.description,
-            level: 2,
-            parentId: subId,
-            x: 485,
+            id: subId,
+            topic: sub.topic,
+            description: sub.description,
+            level: 1,
+            parentId: rootId,
+            x: 350,
             y: nodeY
           });
-          links.push({ from: subId, to: detId });
+          links.push({ from: rootId, to: subId });
           leafIndex++;
-        });
-      }
-    });
+        } else {
+          details.forEach((det, detIdx) => {
+            const detId = `det-${subIdx}-${detIdx}`;
+            const nodeY = verticalPadding + leafIndex * stepY;
+            flattened.push({
+              id: detId,
+              topic: det.topic,
+              description: det.description,
+              level: 2,
+              parentId: subId,
+              x: 670,
+              y: nodeY
+            });
+            links.push({ from: subId, to: detId });
+            leafIndex++;
+          });
+        }
+      });
 
-    // 2. Position Level 1 subtopics based on average y of their children
-    level1Nodes.forEach(item => {
-      const children = flattened.filter(n => n.parentId === item.id);
-      if (children.length > 0) {
-        const avgY = children.reduce((acc, c) => acc + c.y, 0) / children.length;
-        flattened.push({
-          id: item.id,
-          topic: item.node.topic,
-          description: item.node.description,
-          level: 1,
-          parentId: rootId,
-          x: 270,
-          y: avgY
-        });
-        links.push({ from: rootId, to: item.id });
-      }
-    });
+      // 2. Position Level 1 subtopics based on average y of their children
+      level1Nodes.forEach(item => {
+        const children = flattened.filter(n => n.parentId === item.id);
+        if (children.length > 0) {
+          const avgY = children.reduce((acc, c) => acc + c.y, 0) / children.length;
+          flattened.push({
+            id: item.id,
+            topic: item.node.topic,
+            description: item.node.description,
+            level: 1,
+            parentId: rootId,
+            x: 350,
+            y: avgY
+          });
+          links.push({ from: rootId, to: item.id });
+        }
+      });
 
-    // 3. Position Root node at the average y of all subtopics
-    const level1Processed = flattened.filter(n => n.parentId === rootId);
-    const rootY = level1Processed.length > 0
-      ? level1Processed.reduce((acc, c) => acc + c.y, 0) / level1Processed.length
-      : svgHeight / 2;
+      // 3. Position Root node at the average y of all subtopics
+      const level1Processed = flattened.filter(n => n.parentId === rootId);
+      const rootY = level1Processed.length > 0
+        ? level1Processed.reduce((acc, c) => acc + c.y, 0) / level1Processed.length
+        : svgHeight / 2;
 
-    flattened.push({
-      id: rootId,
-      topic: data.topic,
-      description: data.description,
-      level: 0,
-      x: 75,
-      y: rootY
-    });
+      flattened.push({
+        id: rootId,
+        topic: data.topic,
+        description: data.description,
+        level: 0,
+        x: 90,
+        y: rootY
+      });
+
+    } else {
+      // --- RADIAL MIND MAP LAYOUT (Center-Outwards) ---
+      // Split subtopics: even index -> left side, odd index -> right side
+      const leftSubtopics = subtopics.filter((_, idx) => idx % 2 === 0);
+      const rightSubtopics = subtopics.filter((_, idx) => idx % 2 !== 0);
+
+      const getLeafCount = (node: MindMapNode): number => {
+        if (!node.children || node.children.length === 0) return 1;
+        return node.children.reduce((acc, child) => acc + getLeafCount(child), 0);
+      };
+
+      const leftLeaves = leftSubtopics.reduce((acc, sub) => acc + getLeafCount(sub), 0) || 1;
+      const rightLeaves = rightSubtopics.reduce((acc, sub) => acc + getLeafCount(sub), 0) || 1;
+
+      const verticalPadding = 35;
+      const availableHeight = svgHeight - verticalPadding * 2;
+
+      const stepLeftY = availableHeight / (leftLeaves > 1 ? leftLeaves - 1 : 1);
+      const stepRightY = availableHeight / (rightLeaves > 1 ? rightLeaves - 1 : 1);
+
+      // 1. Process LEFT side nodes
+      let leftLeafIdx = 0;
+      const leftLevel1: Array<{ id: string; node: MindMapNode }> = [];
+
+      leftSubtopics.forEach((sub, idx) => {
+        const origIdx = subtopics.indexOf(sub);
+        const subId = `sub-${origIdx}`;
+        leftLevel1.push({ id: subId, node: sub });
+
+        const details = sub.children || [];
+        if (details.length === 0) {
+          const nodeY = verticalPadding + leftLeafIdx * stepLeftY;
+          flattened.push({
+            id: subId,
+            topic: sub.topic,
+            description: sub.description,
+            level: 1,
+            parentId: rootId,
+            x: 245,
+            y: nodeY,
+            side: 'left'
+          });
+          links.push({ from: rootId, to: subId });
+          leftLeafIdx++;
+        } else {
+          details.forEach((det, detIdx) => {
+            const detId = `det-${origIdx}-${detIdx}`;
+            const nodeY = verticalPadding + leftLeafIdx * stepLeftY;
+            flattened.push({
+              id: detId,
+              topic: det.topic,
+              description: det.description,
+              level: 2,
+              parentId: subId,
+              x: 75,
+              y: nodeY,
+              side: 'left'
+            });
+            links.push({ from: subId, to: detId });
+            leftLeafIdx++;
+          });
+        }
+      });
+
+      leftLevel1.forEach(item => {
+        const children = flattened.filter(n => n.parentId === item.id);
+        if (children.length > 0) {
+          const avgY = children.reduce((acc, c) => acc + c.y, 0) / children.length;
+          flattened.push({
+            id: item.id,
+            topic: item.node.topic,
+            description: item.node.description,
+            level: 1,
+            parentId: rootId,
+            x: 245,
+            y: avgY,
+            side: 'left'
+          });
+          links.push({ from: rootId, to: item.id });
+        }
+      });
+
+      // 2. Process RIGHT side nodes
+      let rightLeafIdx = 0;
+      const rightLevel1: Array<{ id: string; node: MindMapNode }> = [];
+
+      rightSubtopics.forEach((sub, idx) => {
+        const origIdx = subtopics.indexOf(sub);
+        const subId = `sub-${origIdx}`;
+        rightLevel1.push({ id: subId, node: sub });
+
+        const details = sub.children || [];
+        if (details.length === 0) {
+          const nodeY = verticalPadding + rightLeafIdx * stepRightY;
+          flattened.push({
+            id: subId,
+            topic: sub.topic,
+            description: sub.description,
+            level: 1,
+            parentId: rootId,
+            x: 555,
+            y: nodeY,
+            side: 'right'
+          });
+          links.push({ from: rootId, to: subId });
+          rightLeafIdx++;
+        } else {
+          details.forEach((det, detIdx) => {
+            const detId = `det-${origIdx}-${detIdx}`;
+            const nodeY = verticalPadding + rightLeafIdx * stepRightY;
+            flattened.push({
+              id: detId,
+              topic: det.topic,
+              description: det.description,
+              level: 2,
+              parentId: subId,
+              x: 725,
+              y: nodeY,
+              side: 'right'
+            });
+            links.push({ from: subId, to: detId });
+            rightLeafIdx++;
+          });
+        }
+      });
+
+      rightLevel1.forEach(item => {
+        const children = flattened.filter(n => n.parentId === item.id);
+        if (children.length > 0) {
+          const avgY = children.reduce((acc, c) => acc + c.y, 0) / children.length;
+          flattened.push({
+            id: item.id,
+            topic: item.node.topic,
+            description: item.node.description,
+            level: 1,
+            parentId: rootId,
+            x: 555,
+            y: avgY,
+            side: 'right'
+          });
+          links.push({ from: rootId, to: item.id });
+        }
+      });
+
+      // 3. Position Root in the center of the canvas
+      flattened.push({
+        id: rootId,
+        topic: data.topic,
+        description: data.description,
+        level: 0,
+        x: 400,
+        y: svgHeight / 2
+      });
+    }
 
     return {
       nodes: flattened,
       connections: links
     };
-  }, [data]);
+  }, [data, layout]);
 
   // Set default selected node
   useEffect(() => {
@@ -157,9 +311,30 @@ export default function MindMap({ data, onAskQuestion }: MindMapProps) {
   if (!data) return null;
 
   return (
-    <div className="mindmap-widget">
+    <div className="mindmap-widget large">
+      {/* Selector & Actions */}
+      <div className="mindmap-controls">
+        <span className="controls-label">Layout Mode:</span>
+        <div className="toggle-button-group">
+          <button 
+            className={`toggle-btn ${layout === 'tree' ? 'active' : ''}`}
+            onClick={() => setLayout('tree')}
+            title="Hierarchical Tree Layout"
+          >
+            <GitBranch size={14} /> Concept Tree
+          </button>
+          <button 
+            className={`toggle-btn ${layout === 'radial' ? 'active' : ''}`}
+            onClick={() => setLayout('radial')}
+            title="Double-sided Radial Mind Map"
+          >
+            <Network size={14} /> Mind Map
+          </button>
+        </div>
+      </div>
+
       {/* SVG Canvas */}
-      <div className="mindmap-canvas-container">
+      <div className="mindmap-canvas-container large">
         <svg 
           viewBox={`0 0 ${svgWidth} ${svgHeight}`} 
           className="mindmap-svg"
@@ -191,14 +366,14 @@ export default function MindMap({ data, onAskQuestion }: MindMapProps) {
               const isSelected = selectedNode?.id === node.id;
               
               // Spacing dependent on level
-              let rectWidth = 120;
-              let rectHeight = 32;
+              let rectWidth = 140;
+              let rectHeight = 34;
               if (node.level === 0) {
-                rectWidth = 115;
-                rectHeight = 36;
+                rectWidth = 135;
+                rectHeight = 38;
               } else if (node.level === 2) {
-                rectWidth = 105;
-                rectHeight = 28;
+                rectWidth = 120;
+                rectHeight = 30;
               }
 
               const rectX = node.x - rectWidth / 2;
@@ -215,7 +390,7 @@ export default function MindMap({ data, onAskQuestion }: MindMapProps) {
                     y={rectY}
                     width={rectWidth}
                     height={rectHeight}
-                    rx={node.level === 0 ? 10 : 6}
+                    rx={node.level === 0 ? 12 : 8}
                     className="node-rect"
                   />
                   <text
@@ -226,7 +401,7 @@ export default function MindMap({ data, onAskQuestion }: MindMapProps) {
                     textAnchor="middle"
                     style={{ fontSize: node.level === 2 ? '0.72rem' : '0.8rem' }}
                   >
-                    {node.topic.length > 17 ? `${node.topic.slice(0, 15)}...` : node.topic}
+                    {node.topic.length > 20 ? `${node.topic.slice(0, 18)}...` : node.topic}
                   </text>
                   <title>{node.topic}</title>
                 </g>
@@ -250,7 +425,7 @@ export default function MindMap({ data, onAskQuestion }: MindMapProps) {
           <button 
             className="btn-primary" 
             onClick={handleAsk}
-            style={{ marginTop: '0.75rem', padding: '0.45rem 1rem', fontSize: '0.8rem', width: 'auto', alignSelf: 'flex-start' }}
+            style={{ marginTop: '0.5rem', padding: '0.45rem 1rem', fontSize: '0.8rem', width: 'auto', alignSelf: 'flex-start' }}
           >
             <Sparkles size={14} /> Ask AI about this
           </button>

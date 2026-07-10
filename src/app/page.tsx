@@ -13,6 +13,7 @@ import {
   FileCode,
   HelpCircle
 } from 'lucide-react';
+import MindMap from './components/MindMap';
 
 interface Message {
   id: string;
@@ -26,6 +27,7 @@ export default function Home() {
   const [fileSize, setFileSize] = useState<string | null>(null);
   const [wordCount, setWordCount] = useState<number | null>(null);
   const [extractedText, setExtractedText] = useState<string | null>(null);
+  const [mindMap, setMindMap] = useState<any | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [docError, setDocError] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState<boolean>(false);
@@ -36,8 +38,9 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [chatError, setChatError] = useState<string | null>(null);
 
-  // Responsive state (tab switcher for mobile)
-  const [activeTab, setActiveTab] = useState<'document' | 'chat'>('document');
+  // Responsive state (tab switcher)
+  const [activeTab, setActiveTab] = useState<'document' | 'mindmap' | 'chat'>('document');
+  const [leftActiveTab, setLeftActiveTab] = useState<'upload' | 'mindmap'>('upload');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -47,13 +50,16 @@ export default function Home() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isGenerating]);
 
-  // When document parses successfully, auto-switch to chat view on mobile for best UX
+  // When document parses successfully, auto-switch to mindmap view for best UX
   useEffect(() => {
-    if (extractedText && activeTab === 'document') {
-      const timer = setTimeout(() => {
-        setActiveTab('chat');
-      }, 600);
-      return () => clearTimeout(timer);
+    if (extractedText) {
+      setLeftActiveTab('mindmap');
+      if (activeTab === 'document') {
+        const timer = setTimeout(() => {
+          setActiveTab('mindmap');
+        }, 600);
+        return () => clearTimeout(timer);
+      }
     }
   }, [extractedText]);
 
@@ -99,6 +105,7 @@ export default function Home() {
 
       setExtractedText(data.text);
       setWordCount(data.wordCount);
+      setMindMap(data.mindMap);
       
       // Set initial assistant message
       setMessages([
@@ -158,10 +165,12 @@ I have analyzed the document. You can now ask me any questions based on it. Use 
     setFileSize(null);
     setWordCount(null);
     setExtractedText(null);
+    setMindMap(null);
     setDocError(null);
     setMessages([]);
     setChatError(null);
     setActiveTab('document');
+    setLeftActiveTab('upload');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -322,10 +331,19 @@ I have analyzed the document. You can now ask me any questions based on it. Use 
         <button 
           id="tab-btn-doc"
           className={`mobile-tab-btn ${activeTab === 'document' ? 'active' : ''}`}
-          onClick={() => setActiveTab('document')}
+          onClick={() => { setActiveTab('document'); setLeftActiveTab('upload'); }}
         >
-          <FileText size={16} /> Document
+          <FileText size={15} /> Doc
         </button>
+        {extractedText && (
+          <button 
+            id="tab-btn-map"
+            className={`mobile-tab-btn ${activeTab === 'mindmap' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('mindmap'); setLeftActiveTab('mindmap'); }}
+          >
+            <Sparkles size={15} /> Map
+          </button>
+        )}
         <button 
           id="tab-btn-chat"
           className={`mobile-tab-btn ${activeTab === 'chat' ? 'active' : ''}`}
@@ -333,7 +351,7 @@ I have analyzed the document. You can now ask me any questions based on it. Use 
           onClick={() => setActiveTab('chat')}
           style={{ opacity: !extractedText ? 0.5 : 1 }}
         >
-          <MessageSquare size={16} /> Chat {!extractedText && '(Locked)'}
+          <MessageSquare size={15} /> Chat {!extractedText && '(Locked)'}
         </button>
       </div>
 
@@ -343,117 +361,156 @@ I have analyzed the document. You can now ask me any questions based on it. Use 
         {/* Left Side: Document Panel */}
         <section 
           id="doc-panel-section"
-          className={`left-panel ${activeTab === 'document' ? 'active' : ''}`}
+          className={`left-panel ${activeTab === 'document' || activeTab === 'mindmap' ? 'active' : ''}`}
         >
-          <div className="card">
-            <h2 className="card-title">
-              <Upload size={18} className="doc-meta-icon" /> Upload Document
-            </h2>
-            
-            {/* Drag and Drop Zone */}
-            {!fileName && (
-              <div 
-                id="drop-zone-area"
-                className={`upload-zone ${dragActive ? 'drag-active' : ''}`}
-                onDragEnter={handleDrag}
-                onDragOver={handleDrag}
-                onDragLeave={handleDrag}
-                onDrop={handleDrop}
-                onClick={triggerUploadClick}
-              >
-                <input 
-                  id="file-selector-input"
-                  type="file" 
-                  className="hidden-file-input" 
-                  ref={fileInputRef} 
-                  onChange={handleFileChange}
-                  accept=".pdf,.docx,.txt,.md"
-                />
-                <div className="upload-icon">
-                  <Upload size={24} />
-                </div>
-                <p className="upload-text">Drag & drop your file here</p>
-                <p className="upload-hint">or click to browse from device</p>
-                <p className="upload-hint" style={{ fontSize: '0.75rem', marginTop: '4px' }}>
-                  Supports PDF, Word (.docx), TXT, or MD
-                </p>
-              </div>
-            )}
-
-            {/* Document processing state */}
-            {isProcessing && (
-              <div className="status-banner processing" id="status-processing-banner">
-                <div className="loading-dots">
-                  <div className="loading-dot"></div>
-                  <div className="loading-dot"></div>
-                  <div className="loading-dot"></div>
-                </div>
-                Processing document...
-              </div>
-            )}
-
-            {/* Document error state */}
-            {docError && (
-              <div className="status-banner error" id="status-error-banner">
-                <AlertCircle size={16} />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{docError}</span>
-              </div>
-            )}
-
-            {/* Document details when uploaded successfully */}
-            {extractedText && fileName && (
-              <div className="doc-info" id="uploaded-doc-details">
-                <div className="doc-meta">
-                  <FileText className="doc-meta-icon" size={24} />
-                  <div style={{ overflow: 'hidden' }}>
-                    <div className="doc-name" title={fileName}>{fileName}</div>
-                    <div className="doc-size">{fileSize}</div>
-                  </div>
-                  <button 
-                    id="btn-remove-document"
-                    onClick={removeDocument} 
-                    className="btn-remove-doc" 
-                    title="Remove Document"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-                
-                <div className="status-banner success">
-                  <CheckCircle2 size={16} /> Document processed successfully!
-                </div>
-
-                <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                    <span>Estimated Words:</span>
-                    <span style={{ fontWeight: 600 }}>{wordCount?.toLocaleString()}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Guidelines / Quick Prompts Card */}
           {extractedText && (
-            <div className="card" id="quick-prompts-card" style={{ animation: 'fadeIn 0.4s ease-out' }}>
-              <h2 className="card-title">
-                <Sparkles size={18} className="doc-meta-icon" /> Suggested Prompts
-              </h2>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-                Click a prompt below to quickly ask the assistant about the uploaded document:
-              </p>
-              <div className="suggestions-grid">
-                {suggestedPrompts.map((prompt, idx) => (
-                  <button 
-                    key={idx}
-                    className="suggestion-btn"
-                    onClick={() => handleSendMessage(prompt)}
-                    disabled={isGenerating}
+            <div className="left-panel-tabs">
+              <button
+                className={`left-tab-btn ${leftActiveTab === 'upload' ? 'active' : ''}`}
+                onClick={() => setLeftActiveTab('upload')}
+              >
+                Document Info
+              </button>
+              <button
+                className={`left-tab-btn ${leftActiveTab === 'mindmap' ? 'active' : ''}`}
+                onClick={() => setLeftActiveTab('mindmap')}
+              >
+                Concept Map
+              </button>
+            </div>
+          )}
+
+          {leftActiveTab === 'upload' ? (
+            <>
+              <div className="card">
+                <h2 className="card-title">
+                  <Upload size={18} className="doc-meta-icon" /> Upload Document
+                </h2>
+                
+                {/* Drag and Drop Zone */}
+                {!fileName && (
+                  <div 
+                    id="drop-zone-area"
+                    className={`upload-zone ${dragActive ? 'drag-active' : ''}`}
+                    onDragEnter={handleDrag}
+                    onDragOver={handleDrag}
+                    onDragLeave={handleDrag}
+                    onDrop={handleDrop}
+                    onClick={triggerUploadClick}
                   >
-                    {prompt}
-                  </button>
-                ))}
+                    <input 
+                      id="file-selector-input"
+                      type="file" 
+                      className="hidden-file-input" 
+                      ref={fileInputRef} 
+                      onChange={handleFileChange}
+                      accept=".pdf,.docx,.txt,.md"
+                    />
+                    <div className="upload-icon">
+                      <Upload size={24} />
+                    </div>
+                    <p className="upload-text">Drag & drop your file here</p>
+                    <p className="upload-hint">or click to browse from device</p>
+                    <p className="upload-hint" style={{ fontSize: '0.75rem', marginTop: '4px' }}>
+                      Supports PDF, Word (.docx), TXT, or MD
+                    </p>
+                  </div>
+                )}
+
+                {/* Document processing state */}
+                {isProcessing && (
+                  <div className="status-banner processing" id="status-processing-banner">
+                    <div className="loading-dots">
+                      <div className="loading-dot"></div>
+                      <div className="loading-dot"></div>
+                      <div className="loading-dot"></div>
+                    </div>
+                    Processing document...
+                  </div>
+                )}
+
+                {/* Document error state */}
+                {docError && (
+                  <div className="status-banner error" id="status-error-banner">
+                    <AlertCircle size={16} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{docError}</span>
+                  </div>
+                )}
+
+                {/* Document details when uploaded successfully */}
+                {extractedText && fileName && (
+                  <div className="doc-info" id="uploaded-doc-details">
+                    <div className="doc-meta">
+                      <FileText className="doc-meta-icon" size={24} />
+                      <div style={{ overflow: 'hidden' }}>
+                        <div className="doc-name" title={fileName}>{fileName}</div>
+                        <div className="doc-size">{fileSize}</div>
+                      </div>
+                      <button 
+                        id="btn-remove-document"
+                        onClick={removeDocument} 
+                        className="btn-remove-doc" 
+                        title="Remove Document"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                    
+                    <div className="status-banner success">
+                      <CheckCircle2 size={16} /> Document processed successfully!
+                    </div>
+
+                    <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                        <span>Estimated Words:</span>
+                        <span style={{ fontWeight: 600 }}>{wordCount?.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
+
+              {/* Guidelines / Quick Prompts Card */}
+              {extractedText && (
+                <div className="card" id="quick-prompts-card" style={{ animation: 'fadeIn 0.4s ease-out' }}>
+                  <h2 className="card-title">
+                    <Sparkles size={18} className="doc-meta-icon" /> Suggested Prompts
+                  </h2>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                    Click a prompt below to quickly ask the assistant about the uploaded document:
+                  </p>
+                  <div className="suggestions-grid">
+                    {suggestedPrompts.map((prompt, idx) => (
+                      <button 
+                        key={idx}
+                        className="suggestion-btn"
+                        onClick={() => handleSendMessage(prompt)}
+                        disabled={isGenerating}
+                      >
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="card" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: '400px', padding: '1.25rem', overflow: 'hidden' }}>
+              <h2 className="card-title" style={{ marginBottom: '0.25rem' }}>
+                <Sparkles size={18} className="doc-meta-icon" /> Concept Map
+              </h2>
+              {mindMap ? (
+                <MindMap data={mindMap} onAskQuestion={handleSendMessage} />
+              ) : (
+                <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '0.75rem', padding: '3rem 1rem' }}>
+                  <div className="loading-dots">
+                    <div className="loading-dot"></div>
+                    <div className="loading-dot"></div>
+                    <div className="loading-dot"></div>
+                  </div>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Generating interactive concept map...</p>
+                </div>
+              )}
             </div>
           )}
         </section>

@@ -8,6 +8,96 @@ if (!apiKey) {
 }
 const ai = new GoogleGenAI({ apiKey });
 
+function retrieveRelevantContext(documentText: string, query: string, maxTokens: number = 30000): string {
+  const characterLimit = maxTokens * 4; 
+  if (documentText.length <= characterLimit) {
+    return documentText;
+  }
+
+  console.log(`Document text length (${documentText.length} chars) exceeds characterLimit (${characterLimit}). Applying Local RAG context retriever...`);
+
+  // 1. Chunk document by paragraphs
+  const paragraphs = documentText.split(/\n+/);
+  const chunks: string[] = [];
+  let currentChunk = "";
+
+  for (const para of paragraphs) {
+    const trimmed = para.trim();
+    if (!trimmed) continue;
+
+    if (currentChunk.length + trimmed.length > 2000) {
+      chunks.push(currentChunk.trim());
+      currentChunk = trimmed;
+    } else {
+      currentChunk += (currentChunk ? "\n" : "") + trimmed;
+    }
+  }
+  if (currentChunk.trim()) {
+    chunks.push(currentChunk.trim());
+  }
+
+  // 2. Extract query keywords
+  const stopWords = new Set(['the', 'is', 'at', 'which', 'on', 'and', 'a', 'an', 'to', 'of', 'in', 'for', 'or', 'about', 'from', 'this', 'that', 'these', 'those', 'with', 'by']);
+  const queryTerms = query
+    .toLowerCase()
+    .replace(/[^\w\s]/g, '')
+    .split(/\s+/)
+    .filter(term => term.length > 2 && !stopWords.has(term));
+
+  const fallbackTerms = query.toLowerCase().split(/\s+/).filter(w => w.length > 1);
+
+  // 3. Score chunks
+  const scoredChunks = chunks.map((chunk, index) => {
+    let score = 0;
+    const chunkLower = chunk.toLowerCase();
+
+    const terms = queryTerms.length > 0 ? queryTerms : fallbackTerms;
+    for (const term of terms) {
+      const regex = new RegExp('\\b' + term + '\\b', 'gi');
+      const matches = chunkLower.match(regex);
+      if (matches) {
+        score += matches.length * 2.0; 
+      }
+      if (chunkLower.includes(term)) {
+        score += 0.5;
+      }
+    }
+
+    // Boost early chunks for summary queries
+    const isSummaryQuery = /summary|summarize|overview|outline|main/i.test(query);
+    if (isSummaryQuery) {
+      const positionFactor = Math.max(0, 1 - (index / chunks.length));
+      score += positionFactor * 6.0; 
+    }
+
+    return { chunk, index, score };
+  });
+
+  // Sort by score descending
+  scoredChunks.sort((a, b) => b.score - a.score);
+
+  // Select top chunks within character limit
+  const selectedChunks: typeof scoredChunks = [];
+  let currentLength = 0;
+
+  for (const item of scoredChunks) {
+    if (currentLength + item.chunk.length > characterLimit) {
+      if (selectedChunks.length === 0) {
+        selectedChunks.push(item);
+      }
+      break;
+    }
+    selectedChunks.push(item);
+    currentLength += item.chunk.length;
+  }
+
+  // Sort back to sequential reading order
+  selectedChunks.sort((a, b) => a.index - b.index);
+
+  console.log(`Local RAG: Retrieved ${selectedChunks.length} chunks out of ${chunks.length} total chunks.`);
+  return selectedChunks.map(item => item.chunk).join('\n\n[...]\n\n');
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { documentText, question, history } = await req.json();
@@ -18,6 +108,9 @@ export async function POST(req: NextRequest) {
     if (!question) {
       return NextResponse.json({ error: 'No question provided' }, { status: 400 });
     }
+
+    // Retrieve relevant context to prevent free tier token overflow
+    const relevantContext = retrieveRelevantContext(documentText, question);
 
     const systemInstruction = `You are a professional, friendly, and helpful document assistant.
 Your goal is to answer questions about the uploaded document as accurately as possible.
@@ -33,7 +126,6 @@ Follow these rules:
     const contents: any[] = [];
     
     // Format conversation history to match Gemini API's expected format
-    // Each element is { role: 'user' | 'model', parts: [{ text: string }] }
     chatHistory.forEach((msg: any) => {
       contents.push({
         role: msg.role === 'user' ? 'user' : 'model',
@@ -41,12 +133,9 @@ Follow these rules:
       });
     });
 
-    // For the current query, we provide the document context alongside the question.
-    // If it's the first message, we embed the document context. If history exists, we can still provide the context or keep it in the first message.
-    // To ensure the model always has reference to the document even after multiple messages, we append the document text at the end or refer to it.
     const contextPrompt = `Document Content:
 """
-${documentText}
+${relevantContext}
 """
 
 Use the above document content to answer the user's question.

@@ -58,6 +58,26 @@ DocAsk is a premium, web-based document assistant that allows users to upload fi
 
 ---
 
+## 🐍 Python Developer Utilities
+
+For local MLOps development, the repository includes a Python utilities suite under `scripts/` to parse documents locally and evaluate Q&A response quality.
+
+See the [scripts/README.md](file:///c:/Users/Lenovo/OneDrive/Desktop/CODES/Doc-Ask/scripts/README.md) for full instructions.
+
+### Quick Run:
+```bash
+# 1. Set up virtual environment
+python -m venv venv
+source venv/bin/activate  # on Windows: .\venv\Scripts\Activate.ps1
+pip install -r scripts/requirements.txt
+
+# 2. Run the QA evaluator script
+export GEMINI_API_KEY="your_api_key"
+python scripts/evaluate_qa.py --file path/to/document.pdf
+```
+
+---
+
 ## 🚀 Deployment
 
 - **Frontend**: Deployed on **Vercel** with Next.js Server Actions.

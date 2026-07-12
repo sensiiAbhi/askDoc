@@ -18,6 +18,40 @@ DocAsk is a premium, web-based document assistant that allows users to upload fi
 
 ---
 
+## 📁 Project Directory Structure
+
+```text
+├── .env.local             # Environment secrets (ignored by git)
+├── .gitignore             # Git ignore definitions
+├── package.json           # Next.js Node dependencies & scripts
+├── tsconfig.json          # TypeScript compilation settings
+├── README.md              # Main project documentation
+├── public/                # Static public assets (favicons, etc.)
+├── scripts/               # Python Developer Utilities Suite
+│   ├── README.md          # Setup & interview study guide for Python scripts
+│   ├── requirements.txt   # Python pip requirements list
+│   ├── parse_document.py  # Local PDF parser & concept map JSON builder
+│   └── evaluate_qa.py     # Local RAG QA evaluator & latency benchmark tool
+└── src/
+    ├── types/
+    │   └── custom.d.ts    # Global typings declaration
+    └── app/
+        ├── layout.tsx     # Next.js global root layout
+        ├── page.tsx       # Main page (Dashboard shell, Upload & Chat interfaces)
+        ├── globals.css    # Premium off-white/coral styles & mobile layouts
+        ├── components/
+        │   └── MindMap.tsx # React SVG Mind Map render engine
+        └── api/
+            ├── process-doc/
+            │   └── route.ts  # Instantly extracts text with 0 Gemini tokens (uses unpdf)
+            ├── generate-map/
+            │   └── route.ts  # Generates concept tree JSON with Gemini model fallback queue
+            └── chat/
+                └── route.ts  # Conversational Q&A utilizing Local RAG & Gemini fallback queue
+```
+
+---
+
 ## 🎨 Design Colors
 - Primary Background: `#FFFAF3` (warm off-white)
 - Card Background: `#FFF2DB` (cream card)
